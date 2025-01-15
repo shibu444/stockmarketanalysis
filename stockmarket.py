@@ -1,113 +1,80 @@
-import yfinance as yf
-import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
-from datetime import datetime, timedelta
+import yfinance as yf
+import plotly.graph_objs as go
+import pandas as pd
+import numpy as np
+import talib
 
-# Function to get stock data
-def get_stock_data(ticker, start_date, end_date):
-    stock_data = yf.download(ticker, start=start_date, end=end_date)
-    return stock_data
+# Set the title of the app
+st.title('Stock Analysis with Candlestick Chart and Technical Indicators')
 
-# Function to calculate technical indicators (without using talib)
-def add_technical_indicators(df):
-    # Calculate Simple Moving Averages
-    df['SMA50'] = df['Close'].rolling(window=50).mean()
-    df['SMA100'] = df['Close'].rolling(window=100).mean()
+# Text input for ticker
+ticker = st.text_input('Enter Stock Ticker', 'AAPL')
 
-    # Calculate Relative Strength Index (RSI)
-    delta = df['Close'].diff(1)
-    gain = delta.where(delta > 0, 0)
-    loss = -delta.where(delta < 0, 0)
+# Date range selection
+start_date = st.date_input('Start Date', pd.to_datetime('2023-12-01'))
+end_date = st.date_input('End Date', pd.to_datetime('2025-01-01'))
 
-    avg_gain = gain.rolling(window=14).mean()
-    avg_loss = loss.rolling(window=14).mean()
+# Fetch data from Yahoo Finance
+data = yf.download(ticker, start=start_date, end=end_date)
 
-    rs = avg_gain / avg_loss
-    df['RSI'] = 100 - (100 / (1 + rs))
+# Calculate SMA 50 and SMA 100
+data['SMA50'] = data['Close'].rolling(window=50).mean()
+data['SMA100'] = data['Close'].rolling(window=100).mean()
 
-    return df
+# Calculate RSI (14-period)
+rsi = ta.momentum.RSIIndicator(data['Close'], window=14)
+data['RSI'] = rsi.rsi()
 
-# Function to calculate returns and standard deviation
-def calculate_statistics(df):
-    # Calculate daily returns
-    df['Daily Return'] = df['Close'].pct_change()
+# Candlestick chart with SMA lines
+fig = go.Figure()
 
-    # Get the last 90 days of data
-    df_90 = df[-90:]
-    avg_return = df_90['Daily Return'].mean()
-    std_dev = df_90['Daily Return'].std()
+# Add Candlestick chart
+fig.add_trace(go.Candlestick(x=data.index,
+                             open=data['Open'],
+                             high=data['High'],
+                             low=data['Low'],
+                             close=data['Close'],
+                             name='Candlesticks'))
 
-    return avg_return, std_dev
+# Add SMA 50
+fig.add_trace(go.Scatter(x=data.index, y=data['SMA50'], mode='lines', name='SMA 50', line={'color': 'blue'}))
 
-# Function to plot the candlestick chart with SMA and RSI
-def plot_candlestick_chart(df):
-    fig = go.Figure(data=[go.Candlestick(x=df.index,
-                                        open=df['Open'],
-                                        high=df['High'],
-                                        low=df['Low'],
-                                        close=df['Close'],
-                                        name="Candlestick")])
+# Add SMA 100
+fig.add_trace(go.Scatter(x=data.index, y=data['SMA100'], mode='lines', name='SMA 100', line={'color': 'orange'}))
 
-    # Add SMA50 and SMA100
-    fig.add_trace(go.Scatter(x=df.index, y=df['SMA50'], mode='lines', name='SMA 50', line=dict(color='blue')))
-    fig.add_trace(go.Scatter(x=df.index, y=df['SMA100'], mode='lines', name='SMA 100', line=dict(color='orange')))
-    
-    fig.update_layout(title="Candlestick Chart with SMA50 and SMA100",
-                      xaxis_title="Date",
-                      yaxis_title="Price",
-                      template="plotly_dark")
-    return fig
+# Update layout for the candlestick chart
+fig.update_layout(title=f'{ticker} Candlestick Chart with SMA 50 and SMA 100',
+                  xaxis_title='Date',
+                  yaxis_title='Price',
+                  template='plotly_dark')
 
-def plot_rsi(df):
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], mode='lines', name='RSI', line=dict(color='green')))
-    fig.add_hline(y=70, line=dict(color='red', dash='dash'), annotation_text="Overbought", annotation_position="top left")
-    fig.add_hline(y=30, line=dict(color='blue', dash='dash'), annotation_text="Oversold", annotation_position="bottom left")
+# Display the candlestick chart
+st.plotly_chart(fig)
 
-    fig.update_layout(title="RSI Chart", xaxis_title="Date", yaxis_title="RSI", template="plotly_dark")
-    return fig
+# Calculate returns for last 90 days
+data['Returns'] = data['Close'].pct_change()
+last_90_days = data[-90:]
 
-# Streamlit UI
-st.title("Stock Price Data with Technical Indicators")
+# Calculate average return and standard deviation of returns
+avg_return = last_90_days['Returns'].mean()
+std_return = last_90_days['Returns'].std()
 
-# Input ticker symbol
-ticker = st.text_input("Enter Stock Ticker Symbol", "AAPL")
+# Display the table with average return and standard deviation
+st.write(f"Average Return (Last 90 Days): {avg_return:.4f}")
+st.write(f"Standard Deviation of Returns (Last 90 Days): {std_return:.4f}")
 
-# Date range for data
-end_date = datetime.today().strftime('%Y-%m-%d')
-start_date = (datetime.today() - timedelta(days=30)).strftime('%Y-%m-%d')
+# Plot RSI chart
+rsi_fig = go.Figure()
 
-start_date_input = st.date_input("Start Date", datetime.today() - timedelta(days=30))
-end_date_input = st.date_input("End Date", datetime.today())
+# Add RSI line
+rsi_fig.add_trace(go.Scatter(x=data.index, y=data['RSI'], mode='lines', name='RSI', line={'color': 'green'}))
 
-start_date = start_date_input.strftime('%Y-%m-%d')
-end_date = end_date_input.strftime('%Y-%m-%d')
+# Update layout for RSI chart
+rsi_fig.update_layout(title=f'{ticker} RSI (14-period)',
+                      xaxis_title='Date',
+                      yaxis_title='RSI',
+                      template='plotly_dark')
 
-# Get stock data
-df = get_stock_data(ticker, start_date, end_date)
-
-if not df.empty:
-    # Add technical indicators
-    df = add_technical_indicators(df)
-
-    # Plot the candlestick chart with SMAs
-    st.plotly_chart(plot_candlestick_chart(df))
-
-    # Plot the RSI chart
-    st.plotly_chart(plot_rsi(df))
-
-    # Calculate returns and standard deviation for the last 90 days
-    avg_return, std_dev = calculate_statistics(df)
-
-    # Display statistics in a table
-    st.subheader("90-Day Average Return and Standard Deviation")
-    stats_data = {
-        "Average Return": [avg_return],
-        "Standard Deviation": [std_dev]
-    }
-    stats_df = pd.DataFrame(stats_data)
-    st.write(stats_df)
-
-else:
-    st.error("No data found for this ticker symbol.")
+# Display the RSI chart
+st.plotly_chart(rsi_fig)
