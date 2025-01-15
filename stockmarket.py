@@ -1,7 +1,6 @@
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
-import talib
 import streamlit as st
 from datetime import datetime, timedelta
 
@@ -10,14 +9,22 @@ def get_stock_data(ticker, start_date, end_date):
     stock_data = yf.download(ticker, start=start_date, end=end_date)
     return stock_data
 
-# Function to calculate technical indicators
+# Function to calculate technical indicators (without using talib)
 def add_technical_indicators(df):
     # Calculate Simple Moving Averages
     df['SMA50'] = df['Close'].rolling(window=50).mean()
     df['SMA100'] = df['Close'].rolling(window=100).mean()
 
     # Calculate Relative Strength Index (RSI)
-    df['RSI'] = talib.RSI(df['Close'], timeperiod=14)
+    delta = df['Close'].diff(1)
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+
+    avg_gain = gain.rolling(window=14).mean()
+    avg_loss = loss.rolling(window=14).mean()
+
+    rs = avg_gain / avg_loss
+    df['RSI'] = 100 - (100 / (1 + rs))
 
     return df
 
